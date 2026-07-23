@@ -434,48 +434,38 @@ const TV_SYMBOLS = {
 };
 
 // تشارت TradingView الحقيقي (الودجت المجاني الرسمي embed-widget-advanced-chart)
-function TradingViewWidget({ symbol, height = 480 }) {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    container.innerHTML = "";
-    const widgetDiv = document.createElement("div");
-    widgetDiv.className = "tradingview-widget-container__widget";
-    widgetDiv.style.height = `${height}px`;
-    widgetDiv.style.width = "100%";
-    container.appendChild(widgetDiv);
-
-    const script = document.createElement("script");
-    script.type = "text/javascript";
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol: symbol || "FX:EURUSD",
-      interval: "60",
-      timezone: "Etc/UTC",
-      theme: "light",
-      style: "1",
-      locale: "ar",
-      enable_publishing: false,
-      backgroundColor: "rgba(255, 255, 255, 1)",
-      gridColor: "rgba(212, 230, 245, 0.6)",
-      hide_top_toolbar: false,
-      hide_legend: false,
-      withdateranges: true,
-      save_image: false,
-      calendar: false,
-      support_host: "https://www.tradingview.com",
-    });
-    container.appendChild(script);
-
-    return () => { container.innerHTML = ""; };
-  }, [symbol, height]);
+function TradingViewWidget({ symbol, height = 720 }) {
+  const config = {
+    symbol: symbol || "FX:EURUSD",
+    interval: "60",
+    timezone: "Etc/UTC",
+    theme: "light",
+    style: "1",
+    locale: "ar",
+    enable_publishing: false,
+    backgroundColor: "rgba(255, 255, 255, 1)",
+    gridColor: "rgba(212, 230, 245, 0.6)",
+    hide_top_toolbar: false,
+    hide_legend: false,
+    withdateranges: true,
+    save_image: false,
+    calendar: false,
+    support_host: "https://www.tradingview.com",
+  };
+  const src = `https://www.tradingview-widget.com/embed-widget/advanced-chart/?locale=ar#${encodeURIComponent(JSON.stringify(config))}`;
 
   return (
-    <div className="tradingview-widget-container" ref={containerRef} style={{ height, width: "100%" }} />
+    <iframe
+      key={symbol}
+      src={src}
+      title={`tradingview-${symbol}`}
+      width="100%"
+      height={height}
+      frameBorder="0"
+      allowTransparency="true"
+      scrolling="no"
+      style={{ display: "block", border: "none", width: "100%", height: `${height}px` }}
+    />
   );
 }
 
@@ -785,7 +775,9 @@ ${stratLines}
           <span className="text-[11px]" style={{ color: C.dim }}>الرمز: <b style={{ color: C.gold }} dir="ltr">{TV_SYMBOLS[model.id] || "غير مدعوم"}</b></span>
         </div>
         {TV_SYMBOLS[model.id] ? (
-          <TradingViewWidget symbol={TV_SYMBOLS[model.id]} height={720} />
+          <div className="tv-chart-box">
+            <TradingViewWidget symbol={TV_SYMBOLS[model.id]} height={720} />
+          </div>
         ) : (
           <div className="rounded-xl p-6 text-xs text-center" style={{ background: C.bgDeep, border: `1px solid ${C.border}`, color: C.dim }}>
             هذا الأصل غير مدعوم حاليًا على TradingView ضمن هذه المنصة.
