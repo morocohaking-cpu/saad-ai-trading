@@ -443,7 +443,7 @@ function TradingViewWidget({ symbol, height = 480 }) {
     container.innerHTML = "";
     const widgetDiv = document.createElement("div");
     widgetDiv.className = "tradingview-widget-container__widget";
-    widgetDiv.style.height = "100%";
+    widgetDiv.style.height = `${height}px`;
     widgetDiv.style.width = "100%";
     container.appendChild(widgetDiv);
 
@@ -472,7 +472,7 @@ function TradingViewWidget({ symbol, height = 480 }) {
     container.appendChild(script);
 
     return () => { container.innerHTML = ""; };
-  }, [symbol]);
+  }, [symbol, height]);
 
   return (
     <div className="tradingview-widget-container" ref={containerRef} style={{ height, width: "100%" }} />
@@ -785,7 +785,7 @@ ${stratLines}
           <span className="text-[11px]" style={{ color: C.dim }}>الرمز: <b style={{ color: C.gold }} dir="ltr">{TV_SYMBOLS[model.id] || "غير مدعوم"}</b></span>
         </div>
         {TV_SYMBOLS[model.id] ? (
-          <TradingViewWidget symbol={TV_SYMBOLS[model.id]} height={620} />
+          <TradingViewWidget symbol={TV_SYMBOLS[model.id]} height={720} />
         ) : (
           <div className="rounded-xl p-6 text-xs text-center" style={{ background: C.bgDeep, border: `1px solid ${C.border}`, color: C.dim }}>
             هذا الأصل غير مدعوم حاليًا على TradingView ضمن هذه المنصة.
