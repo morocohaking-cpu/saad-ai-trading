@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Search, Newspaper, Star, ClipboardList, BookOpen, FlaskConical,
   Bot, Settings as SettingsIcon, ChevronLeft, ChevronRight, TrendingUp, TrendingDown,
   Minus, Coins, Landmark, Package, Send, Trash2, Plus, AlertTriangle,
-  Gauge, Layers, Calculator, Circle
+  Layers, Calculator, Circle
 } from "lucide-react";
 
 /* ============================== الألوان والهوية البصرية ============================== */
@@ -502,10 +502,9 @@ function Sidebar({ view, setView, collapsed, setCollapsed, setCategory, setSelec
     <aside className="h-screen sticky top-0 flex flex-col shrink-0 transition-all duration-300"
       style={{ width: collapsed ? 72 : 248, background: C.bgPanel2, borderLeft: `1px solid ${C.border}` }}>
       <div className="flex items-center gap-2 px-4 py-5" style={{ borderBottom: `1px solid ${C.border}` }}>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: `linear-gradient(135deg, ${C.gold}, #155DBB)` }}>
-          <Gauge size={18} color="#FFFFFF" />
-        </div>
+        <img src="/logo.jpg" alt="SAAD AI Trading"
+          className="w-9 h-9 rounded-full object-cover shrink-0"
+          style={{ border: `2px solid ${C.gold}` }} />
         {!collapsed && (
           <div className="leading-tight overflow-hidden">
             <div className="font-extrabold text-sm truncate" style={{ color: C.softWhite }}>SAAD AI Trading</div>
