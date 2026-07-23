@@ -1,128 +1,16 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, ReferenceArea
-} from "recharts";
-import {
-  LayoutDashboard, Search, Newspaper, Star, ClipboardList, BookOpen, FlaskConical,
-  Bot, Settings as SettingsIcon, ChevronLeft, ChevronRight, TrendingUp, TrendingDown,
-  Minus, Coins, Landmark, Package, Send, Trash2, Plus, AlertTriangle,
-  Gauge, Layers, Calculator, Circle
-} from "lucide-react";
-
-/* ============================== الألوان والهوية البصرية ============================== */
-const C = {
-  bgDeep: "#0A0E17",
-  bgPanel: "#111A2C",
-  bgPanel2: "#0D1524",
-  border: "#22304A",
-  gold: "#C9A15D",
-  goldBright: "#E8C77E",
-  softWhite: "#E8ECF4",
-  dim: "#8B97AC",
-  cyan: "#5EC8D8",
-  green: "#3ED9A0",
-  red: "#E5636B",
-  navy2: "#16213A",
-};
-const FONT_AR = "'Tajawal','Segoe UI',Tahoma,Arial,sans-serif";
-const FONT_MONO = "'JetBrains Mono',ui-monospace,'Courier New',monospace";
-
-/* ============================== أدوات مساعدة ============================== */
-function hashStr(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-function mulberry32(seed) {
-  let a = seed;
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function fmtNum(n, d = 2) {
-  if (n === undefined || n === null || isNaN(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
-}
-function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
-function ema(arr, period) {
-  const k = 2 / (period + 1);
-  let prev = arr.slice(0, period).reduce((a, b) => a + b, 0) / Math.min(period, arr.length);
-  const out = [];
-  for (let i = 0; i < arr.length; i++) {
-    prev = i === 0 ? arr[0] : arr[i] * k + prev * (1 - k);
-    out.push(prev);
-  }
-  return out;
-}
-function rsi(arr, period = 14) {
-  let gains = 0, losses = 0;
-  const out = new Array(arr.length).fill(50);
-  for (let i = 1; i < arr.length; i++) {
-    const diff = arr[i] - arr[i - 1];
-    const g = diff > 0 ? diff : 0;
-    const l = diff < 0 ? -diff : 0;
-    if (i <= period) { gains += g; losses += l; out[i] = 50; }
-    else {
-      gains = (gains * (period - 1) + g) / period;
-      losses = (losses * (period - 1) + l) / period;
-      const rs = losses === 0 ? 100 : gains / losses;
-      out[i] = 100 - 100 / (1 + rs);
-    }
-  }
-  return out;
-}
-function stdevReturns(arr, n = 20) {
-  const slice = arr.slice(-n);
-  const rets = [];
-  for (let i = 1; i < slice.length; i++) rets.push((slice[i] - slice[i - 1]) / slice[i - 1]);
-  const mean = rets.reduce((a, b) => a + b, 0) / rets.length;
-  const variance = rets.reduce((a, b) => a + (b - mean) ** 2, 0) / rets.length;
-  return Math.sqrt(variance);
-}
-
-/* ============================== الأصول المالية ============================== */
-const ASSET_DEFS = [
-  { id: "EURUSD", nameAr: "EUR / USD", category: "forex", base: 1.0850, decimals: 4 },
-  { id: "GBPUSD", nameAr: "GBP / USD", category: "forex", base: 1.2650, decimals: 4 },
-  { id: "USDJPY", nameAr: "USD / JPY", category: "forex", base: 151.20, decimals: 2 },
-  { id: "USDCHF", nameAr: "USD / CHF", category: "forex", base: 0.8850, decimals: 4 },
-  { id: "AUDUSD", nameAr: "AUD / USD", category: "forex", base: 0.6550, decimals: 4 },
-  { id: "USDCAD", nameAr: "USD / CAD", category: "forex", base: 1.3720, decimals: 4 },
-  { id: "NZDUSD", nameAr: "NZD / USD", category: "forex", base: 0.6050, decimals: 4 },
-  { id: "XAUUSD", nameAr: "Gold (XAU/USD)", category: "metals", base: 3350, decimals: 2 },
-  { id: "XAGUSD", nameAr: "Silver (XAG/USD)", category: "metals", base: 38.50, decimals: 2 },
-  { id: "BTCUSD", nameAr: "Bitcoin (BTC)", category: "crypto", base: 112000, decimals: 0 },
-  { id: "ETHUSD", nameAr: "Ethereum (ETH)", category: "crypto", base: 4200, decimals: 2 },
-  { id: "SOLUSD", nameAr: "Solana (SOL)", category: "crypto", base: 210, decimals: 2 },
-  { id: "BNBUSD", nameAr: "BNB", category: "crypto", base: 720, decimals: 2 },
-  { id: "XRPUSD", nameAr: "XRP", category: "crypto", base: 2.85, decimals: 4 },
-  { id: "SPX500", nameAr: "S&P 500", category: "indices", base: 6350, decimals: 1 },
-  { id: "NAS100", nameAr: "Nasdaq 100", category: "indices", base: 23400, decimals: 1 },
-  { id: "US30", nameAr: "Dow Jones", category: "indices", base: 44800, decimals: 0 },
-  { id: "GER40", nameAr: "DAX 40", category: "indices", base: 19200, decimals: 1 },
-  { id: "WTI", nameAr: "Crude Oil (WTI)", category: "commodities", base: 71.5, decimals: 2 },
-  { id: "NATGAS", nameAr: "Natural Gas", category: "commodities", base: 3.15, decimals: 3 },
 ];
 // خريطة الأصول المدعومة ببيانات حية عبر Twelve Data (رمز الأصل الداخلي -> رمز Twelve Data)
 // أي أصل غير مذكور هنا يبقى بيانات محاكاة (SIMULATED) بشكل واضح.
 const LIVE_SYMBOLS = {
   EURUSD: "EUR/USD",
   GBPUSD: "GBP/USD",
-  USDJPY: "USD/JPY",
-  USDCHF: "USD/CHF",
-  AUDUSD: "AUD/USD",
-  USDCAD: "USD/CAD",
-  NZDUSD: "NZD/USD",
   XAUUSD: "XAU/USD",
   XAGUSD: "XAG/USD",
   BTCUSD: "BTC/USD",
   ETHUSD: "ETH/USD",
 };
-// عدّل هذه القيمة حسب باقتك على Twelve Data (الباقة المجانية محدودة بعدد طلبات يوميًا/بالدقيقة)
+// عدّل هذه القيمة حسب باقتك على Twelve Data. مهم: الباقة المجانية محدودة بـ 8 "credits" بالدقيقة،
+// وكل رمز إضافي هنا يستهلك credit واحد لكل طلب — لا تتجاوز 8 رموز إن كنت على الباقة المجانية.
 const LIVE_REFRESH_INTERVAL_MS = 90000;
 
 const CATEGORIES = [
@@ -1436,9 +1324,10 @@ export default function App() {
       try {
         const symbols = Object.values(LIVE_SYMBOLS).join(",");
         const res = await fetch(`/.netlify/functions/quotes?symbols=${encodeURIComponent(symbols)}`);
-        if (!res.ok) return;
+        if (!res.ok) { console.warn("Twelve Data function error:", res.status); return; }
         const data = await res.json();
         if (cancelled) return;
+        if (data && data.code) { console.warn("Twelve Data API error:", data.code, data.message); }
         const nextPrices = {};
         const nextChanges = {};
         const nextStatus = {};
@@ -1450,13 +1339,14 @@ export default function App() {
             nextStatus[id] = true;
           } else {
             nextStatus[id] = false;
+            if (q && q.code) console.warn(`Twelve Data error for ${sym}:`, q.code, q.message);
           }
         });
         if (Object.keys(nextPrices).length) setPrices((prev) => ({ ...prev, ...nextPrices }));
         setLiveChangeOverride((prev) => ({ ...prev, ...nextChanges }));
         setLiveStatus((prev) => ({ ...prev, ...nextStatus }));
       } catch (e) {
-        // تجاهل الخطأ والاستمرار بالبيانات المحاكاة كنسخة احتياطية
+        console.warn("Twelve Data fetch failed:", e.message);
       }
     }
     fetchLive();
