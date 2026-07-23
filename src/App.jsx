@@ -112,13 +112,16 @@ const ASSET_DEFS = [
 const LIVE_SYMBOLS = {
   EURUSD: "EUR/USD",
   GBPUSD: "GBP/USD",
+  USDJPY: "USD/JPY",
   XAUUSD: "XAU/USD",
   XAGUSD: "XAG/USD",
   BTCUSD: "BTC/USD",
   ETHUSD: "ETH/USD",
+  SOLUSD: "SOL/USD",
 };
 // عدّل هذه القيمة حسب باقتك على Twelve Data. مهم: الباقة المجانية محدودة بـ 8 "credits" بالدقيقة،
-// وكل رمز إضافي هنا يستهلك credit واحد لكل طلب — لا تتجاوز 8 رموز إن كنت على الباقة المجانية.
+// وكل رمز إضافي هنا يستهلك credit واحد لكل طلب — 8 رموز هو السقف الآمن الأقصى للباقة المجانية.
+// إذا رقّيت الباقة على Twelve Data، ارفع هذا الرقم وأضف رموزًا أكثر بأمان.
 const LIVE_REFRESH_INTERVAL_MS = 90000;
 
 const CATEGORIES = [
