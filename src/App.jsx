@@ -107,11 +107,9 @@ const ASSET_DEFS = [
   { id: "WTI", nameAr: "Crude Oil (WTI)", category: "commodities", base: 71.5, decimals: 2 },
   { id: "NATGAS", nameAr: "Natural Gas", category: "commodities", base: 3.15, decimals: 3 },
 ];
-// خريطة الأصول المدعومة ببيانات حية عبر Twelve Data (رمز الأصل الداخلي -> رمز Twelve Data)
-// أي أصل غير مذكور هنا يبقى بيانات محاكاة (SIMULATED) بشكل واضح.
-// Twelve Data: فوركس + ذهب (الباقة المجانية 800 credit/يوم و8 credits/دقيقة).
-// 8 رموز × 96 دورة/يوم (كل 15 دقيقة) = 768 credit — ضمن الحد الآمن.
-const LIVE_SYMBOLS = {
+// خريطة الأصول المستخدمة لحساب مؤشرات فنية حقيقية (EMA/RSI) من بيانات Twelve Data التاريخية.
+// هذه منفصلة عن مصدر السعر اللحظي (قد يأتي السعر من مزود أسرع بينما المؤشرات تُحسب من هذه البيانات).
+const TD_HISTORY_SYMBOLS = {
   EURUSD: "EUR/USD",
   GBPUSD: "GBP/USD",
   USDJPY: "USD/JPY",
@@ -121,7 +119,25 @@ const LIVE_SYMBOLS = {
   NZDUSD: "NZD/USD",
   XAUUSD: "XAU/USD",
 };
-const LIVE_REFRESH_INTERVAL_MS = 900000; // 15 دقيقة — راجع تعليق أعلاه قبل تعديل هذا الرقم
+
+// أسعار لحظية من Twelve Data: الذهب فقط الآن (الفوركس انتقل إلى Finnhub الأسرع أدناه).
+// هذا يوفر معظم حصة الـ 800 credit/يوم لصالح ميزة البيانات التاريخية.
+const TD_QUOTE_SYMBOLS = { XAUUSD: "XAU/USD" };
+const GOLD_REFRESH_INTERVAL_MS = 600000; // 10 دقائق — آمن جدًا لرمز واحد فقط
+
+// Finnhub: أسعار فوركس لحظية حقيقية عبر طلب واحد يرجع كل الأزواج دفعة واحدة (forex/rates).
+// الباقة المجانية 60 طلب/دقيقة بدون حد يومي عملي — تسمح بتحديث كل 60 ثانية فعليًا.
+// invert:true يعني السعر = 1 / السعر المرجعي (لأزواج مثل EUR/USD حيث الدولار هو العملة المقابلة).
+const FINNHUB_PAIRS = [
+  { id: "EURUSD", ccy: "EUR", invert: true },
+  { id: "GBPUSD", ccy: "GBP", invert: true },
+  { id: "USDJPY", ccy: "JPY", invert: false },
+  { id: "USDCHF", ccy: "CHF", invert: false },
+  { id: "AUDUSD", ccy: "AUD", invert: true },
+  { id: "USDCAD", ccy: "CAD", invert: false },
+  { id: "NZDUSD", ccy: "NZD", invert: true },
+];
+const FOREX_REFRESH_INTERVAL_MS = 60000; // 60 ثانية
 
 // Binance: عملات رقمية عبر API عام مجاني بالكامل بدون أي مفتاح، وبدون حد يومي عملي.
 // لهذا الكريبتو يتحدث كل 60 ثانية فعليًا (سرعة أعلى بكثير من الفوركس على الباقة المجانية).
@@ -133,6 +149,13 @@ const BINANCE_SYMBOLS = {
   XRPUSD: "XRPUSDT",
 };
 const CRYPTO_REFRESH_INTERVAL_MS = 60000; // 60 ثانية
+
+// مجموعة كل معرّفات الأصول التي لديها أي مصدر بيانات حي (لتخطي المحاكاة العشوائية عليها)
+const LIVE_MANAGED_IDS = new Set([
+  ...Object.keys(TD_QUOTE_SYMBOLS),
+  ...Object.keys(BINANCE_SYMBOLS),
+  ...FINNHUB_PAIRS.map((p) => p.id),
+]);
 
 const CATEGORIES = [
   { id: "all", label: "الكل", icon: Layers },
@@ -798,9 +821,18 @@ ${stratLines}
             <SectionTitle icon={Bot} title="تحليل الذكاء الاصطناعي" />
             <ConfidenceGauge value={signal.confidence} size={64} />
           </div>
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center flex-wrap gap-3 mb-3">
             <BiasBadge bias={signal.bias} size="lg" />
             <span className="text-xs" style={{ color: C.dim }}>التأكيدات: <b style={{ color: C.softWhite }}>{signal.agreeCount}/5</b></span>
+            {signal.indicatorsReal ? (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ color: C.green, background: `${C.green}1A`, border: `1px solid ${C.green}44` }}>
+                مؤشرات من بيانات حقيقية
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded" style={{ color: C.dim, background: `${C.dim}14`, border: `1px solid ${C.border}` }}>
+                مؤشرات محاكاة
+              </span>
+            )}
           </div>
           <div className="mb-3">
             <div className="text-xs font-bold mb-1.5" style={{ color: C.goldBright }}>لماذا هذا القرار؟</div>
@@ -1446,17 +1478,18 @@ function Settings({ settings, setSettings, resetData }) {
 /* ============================== التطبيق الرئيسي ============================== */
 export default function App() {
   const models = useMemo(() => ASSET_DEFS.map(buildModel), []);
-  const signals = useMemo(() => {
+  const [signals, setSignals] = useState(() => {
     const out = {};
     models.forEach((m) => { out[m.id] = computeSignal(m); });
     return out;
-  }, [models]);
+  });
 
   const [prices, setPrices] = useState(() => {
     const p = {}; models.forEach((m) => { p[m.id] = m.series[m.series.length - 1]; }); return p;
   });
   const [liveChangeOverride, setLiveChangeOverride] = useState({});
   const [liveStatus, setLiveStatus] = useState({});
+  const forexBaselineRef = useRef({});
 
   // محاكاة تحرك الأسعار للأصول التي لا تملك بيانات حية
   useEffect(() => {
@@ -1464,7 +1497,7 @@ export default function App() {
       setPrices((prev) => {
         const next = { ...prev };
         models.forEach((m) => {
-          if (LIVE_SYMBOLS[m.id]) return; // الأصول الحية تُحدَّث من Twelve Data فقط
+          if (LIVE_MANAGED_IDS.has(m.id)) return; // الأصول الحية تُحدَّث من مصادرها الفعلية فقط
           const jitter = (Math.random() - 0.5) * 2 * m.volPct * 0.5;
           next[m.id] = next[m.id] * (1 + jitter);
         });
@@ -1490,7 +1523,7 @@ export default function App() {
 
     async function fetchLive() {
       try {
-        const symbols = Object.values(LIVE_SYMBOLS).join(",");
+        const symbols = Object.values(TD_QUOTE_SYMBOLS).join(",");
         const res = await fetch(`/.netlify/functions/quotes?symbols=${encodeURIComponent(symbols)}`);
         if (!res.ok) { console.warn("Twelve Data function error:", res.status); return; }
         const data = await res.json();
@@ -1499,7 +1532,7 @@ export default function App() {
         const nextPrices = {};
         const nextChanges = {};
         const nextStatus = {};
-        Object.entries(LIVE_SYMBOLS).forEach(([id, sym]) => {
+        Object.entries(TD_QUOTE_SYMBOLS).forEach(([id, sym]) => {
           const q = data[sym];
           if (q && q.close && !q.code) {
             nextPrices[id] = parseFloat(q.close);
@@ -1527,9 +1560,61 @@ export default function App() {
       }
     }
     fetchLive();
-    const t = setInterval(fetchLive, LIVE_REFRESH_INTERVAL_MS);
+    const t = setInterval(fetchLive, GOLD_REFRESH_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(t); };
   }, []);
+
+  // تحديث المؤشرات الفنية (EMA/RSI/الدعم والمقاومة) ببيانات تاريخية حقيقية بدل المحاكاة،
+  // لكن فقط للأصول التي لديها بيانات حية أصلًا (فوركس رئيسية + الذهب عبر Twelve Data).
+  // التحديث مرة كل ~20 ساعة لكل رمز (مخزّن محليًا)، بفاصل 15 ثانية بين كل رمز وآخر لتفادي تجاوز حد الدقيقة.
+  useEffect(() => {
+    let cancelled = false;
+    const HISTORY_TTL_MS = 20 * 60 * 60 * 1000;
+
+    function applyRealHistory(id, closes) {
+      const model = models.find((m) => m.id === id);
+      if (!model || closes.length < 30) return;
+      const realModel = { ...model, series: closes, rand: mulberry32(hashStr(model.id)) };
+      const newSignal = computeSignal(realModel);
+      newSignal.indicatorsReal = true;
+      setSignals((prev) => ({ ...prev, [id]: newSignal }));
+    }
+
+    async function loadHistoryFor(id, sym, delayMs) {
+      await new Promise((r) => setTimeout(r, delayMs));
+      if (cancelled) return;
+      const cacheKey = `history-${id}`;
+      const cached = await loadKey(cacheKey, null);
+      const now = Date.now();
+      if (cached && cached.ts && now - cached.ts < HISTORY_TTL_MS && Array.isArray(cached.closes)) {
+        applyRealHistory(id, cached.closes);
+        return;
+      }
+      try {
+        const res = await fetch(`/.netlify/functions/history?symbol=${encodeURIComponent(sym)}&outputsize=150`);
+        if (!res.ok) { console.warn("history function error:", res.status); return; }
+        const data = await res.json();
+        if (cancelled) return;
+        if (data && Array.isArray(data.values)) {
+          const closes = data.values.map((v) => parseFloat(v.close)).reverse();
+          if (closes.length >= 30) {
+            await saveKey(cacheKey, { ts: now, closes });
+            applyRealHistory(id, closes);
+          }
+        } else {
+          console.warn("Twelve Data history error for", sym, data);
+        }
+      } catch (e) {
+        console.warn("History fetch failed for", sym, e.message);
+      }
+    }
+
+    Object.entries(TD_HISTORY_SYMBOLS).forEach(([id, sym], idx) => {
+      loadHistoryFor(id, sym, idx * 15000);
+    });
+
+    return () => { cancelled = true; };
+  }, [models]);
 
   // جلب أسعار العملات الرقمية مباشرة من Binance (API عام مجاني، بدون مفتاح، بدون حد يومي عملي)
   useEffect(() => {
@@ -1566,6 +1651,49 @@ export default function App() {
     fetchCrypto();
     const t = setInterval(fetchCrypto, CRYPTO_REFRESH_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // جلب أسعار الفوركس الحقيقية كل 60 ثانية عبر Finnhub (طلب واحد يرجع كل الأزواج)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchForex() {
+      try {
+        const res = await fetch("/.netlify/functions/forex-rates");
+        if (!res.ok) { console.warn("Finnhub function error:", res.status); return; }
+        const data = await res.json();
+        if (cancelled) return;
+        const rates = data.quote || data.rates || null;
+        if (!rates) { console.warn("Finnhub forex/rates: unexpected response", data); return; }
+        const nextPrices = {};
+        const nextStatus = {};
+        FINNHUB_PAIRS.forEach(({ id, ccy, invert }) => {
+          const r = rates[ccy];
+          if (r) {
+            const price = invert ? 1 / r : r;
+            nextPrices[id] = price;
+            nextStatus[id] = true;
+            if (forexBaselineRef.current[id] === undefined) forexBaselineRef.current[id] = price;
+          }
+        });
+        if (Object.keys(nextPrices).length) {
+          setPrices((prev) => ({ ...prev, ...nextPrices }));
+          setLiveStatus((prev) => ({ ...prev, ...nextStatus }));
+          setLiveChangeOverride((prev) => {
+            const next = { ...prev };
+            Object.entries(nextPrices).forEach(([id, price]) => {
+              const base = forexBaselineRef.current[id];
+              if (base) next[id] = ((price - base) / base) * 100;
+            });
+            return next;
+          });
+        }
+      } catch (e) {
+        console.warn("Finnhub fetch failed:", e.message);
+      }
+    }
+    fetchForex();
+    const t2 = setInterval(fetchForex, FOREX_REFRESH_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(t2); };
   }, []);
 
   const changes = useMemo(() => {
